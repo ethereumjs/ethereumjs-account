@@ -6,6 +6,8 @@
 [![Gitter](https://img.shields.io/gitter/room/ethereum/ethereumjs-lib.svg?style=flat-square)](https://gitter.im/ethereum/ethereumjs-lib)
 [![js-standard-style](https://img.shields.io/badge/code%20style-standard-brightgreen.svg?style=flat)](https://github.com/feross/standard)
 
+THIS IS A LGTM.com TEST, DO NOT MERGE!
+
 This library eases the handling of Ethereum accounts, where accounts can be either external accounts
 or contracts (see
 [Account Types](http://ethdocs.org/en/latest/contracts-and-transactions/account-types-gas-and-transactions.html) docs).
