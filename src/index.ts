@@ -1,6 +1,12 @@
 import * as rlp from 'rlp'
+import {
+  toBuffer,
+  keccak256,
+  KECCAK256_RLP,
+  KECCAK256_NULL,
+  KECCAK256_NULL_S,
+} from 'ethereumjs-util'
 
-const ethUtil = require('ethereumjs-util')
 const Buffer = require('safe-buffer').Buffer
 
 interface TrieGetCb {
@@ -23,35 +29,35 @@ export default class Account {
   /**
    * The account's nonce.
    */
-  public nonce!: Buffer
+  public nonce: Buffer
 
   /**
    * The account's balance in wei.
    */
-  public balance!: Buffer
+  public balance: Buffer
 
   /**
    * The stateRoot for the storage of the contract.
    */
-  public stateRoot!: Buffer
+  public stateRoot: Buffer
 
   /**
    * The hash of the code of the contract.
    */
-  public codeHash!: Buffer
+  public codeHash: Buffer
 
   /**
    * Creates a new account object
    *
    * ~~~
-   * var data = [
-   *   '0x02', //nonce
-   *   '0x0384', //balance
-   *   '0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421', //stateRoot
-   *   '0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470', //codeHash
+   * const data = [
+   *   '0x02', // nonce
+   *   '0x0384', // balance
+   *   '0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421', // stateRoot
+   *   '0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470', // codeHash
    * ]
    *
-   * var data = {
+   * const data = {
    *   nonce: '',
    *   balance: '0x03e7',
    *   stateRoot: '0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421',
@@ -62,34 +68,70 @@ export default class Account {
    * ~~~
    *
    * @param data
-   * An account can be initialized with either a `buffer` containing the RLP serialized account.
-   * Or an `Array` of buffers relating to each of the account Properties, listed in order below.
-   *
+   * An account can be initialized with either:
+   * 1. A `buffer` containing the RLP serialized account.
+   * 2. An `Array` of buffers relating to each of the account properties listed in order [nonce, balance, stateRoot, codeHash].
+   * 3. An `object` with properties {nonce, balance, stateRoot, codeHash}.
    * For `Object` and `Array` each of the elements can either be a `Buffer`, hex `String`, `Number`, or an object with a `toBuffer` method such as `Bignum`.
    */
   constructor(data?: any) {
-    const fields = [
-      {
-        name: 'nonce',
-        default: Buffer.alloc(0),
-      },
-      {
-        name: 'balance',
-        default: Buffer.alloc(0),
-      },
-      {
-        name: 'stateRoot',
-        length: 32,
-        default: ethUtil.KECCAK256_RLP,
-      },
-      {
-        name: 'codeHash',
-        length: 32,
-        default: ethUtil.KECCAK256_NULL,
-      },
-    ]
+    let nonce
+    let balance
+    let stateRoot
+    let codeHash
 
-    ethUtil.defineProperties(this, fields, data)
+    if (typeof data === 'string') {
+      data = Buffer.from(data.substring(0, 2) === '0x' ? data.substring(2) : data, 'hex')
+    }
+
+    if (Buffer.isBuffer(data)) {
+      data = rlp.decode(data)
+    }
+
+    if (Array.isArray(data)) {
+      if (data.length > 4) {
+        throw new Error('wrong number of fields in data')
+      }
+
+      data.forEach((d, i) => {
+        switch (i) {
+          case 0:
+            nonce = toBuffer(d)
+          case 1:
+            balance = toBuffer(d)
+          case 2:
+            stateRoot = toBuffer(d)
+          case 3:
+            codeHash = toBuffer(d)
+        }
+      })
+    } else if (typeof data === 'object') {
+      if (data.nonce) {
+        nonce = toBuffer(data.nonce)
+      }
+      if (data.balance) {
+        balance = toBuffer(data.balance)
+      }
+      if (data.stateRoot) {
+        stateRoot = toBuffer(data.stateRoot)
+      }
+      if (data.codeHash) {
+        codeHash = toBuffer(data.codeHash)
+      }
+    } else if (data) {
+      throw new Error('invalid data')
+    }
+
+    this.nonce = toBuffer(nonce || '0x')
+    this.balance = toBuffer(balance || '0x')
+    this.stateRoot = stateRoot ? toBuffer(stateRoot) : KECCAK256_RLP
+    this.codeHash = codeHash ? toBuffer(codeHash) : KECCAK256_NULL
+
+    if (this.stateRoot.length !== 32) {
+      throw new Error('The field stateRoot must be exactly 32 bytes.')
+    } else if (this.codeHash.length !== 32) {
+      throw new Error('The field codeHash must be exactly 32 bytes.')
+    }
   }
 
   /**
@@ -105,7 +147,7 @@ export default class Account {
    *
    */
   isContract(): boolean {
-    return this.codeHash.toString('hex') !== ethUtil.KECCAK256_NULL_S
+    return this.codeHash.toString('hex') !== KECCAK256_NULL_S
   }
 
   /**
@@ -158,9 +200,9 @@ export default class Account {
    *
    */
   setCode(trie: Trie, code: Buffer, cb: (err: any, codeHash: Buffer) => void): void {
-    this.codeHash = ethUtil.keccak256(code)
+    this.codeHash = keccak256(code)
 
-    if (this.codeHash.toString('hex') === ethUtil.KECCAK256_NULL_S) {
+    if (this.codeHash.toString('hex') === KECCAK256_NULL_S) {
       cb(null, Buffer.alloc(0))
       return
     }
@@ -233,7 +275,7 @@ export default class Account {
     return (
       this.balance.toString('hex') === '' &&
       this.nonce.toString('hex') === '' &&
-      this.codeHash.toString('hex') === ethUtil.KECCAK256_NULL_S
+      this.codeHash.toString('hex') === KECCAK256_NULL_S
     )
   }
 }
