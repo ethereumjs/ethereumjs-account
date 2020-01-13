@@ -1,6 +1,7 @@
 import * as rlp from 'rlp'
 import {
   toBuffer,
+  baToJSON,
   keccak256,
   KECCAK256_RLP,
   KECCAK256_NULL,
@@ -25,26 +26,75 @@ interface Trie {
   put(key: Buffer | string, value: Buffer | string, cb: TriePutCb): void
 }
 
+interface AccountProps {
+  nonce: Buffer
+  balance: Buffer
+  stateRoot: Buffer
+  codeHash: Buffer
+}
+
+// Would prefer for Account class getters to have type `Buffer`
+// and setters to have type `any` to be cast `toBuffer`,
+// however get ts error:
+// `'get' and 'set' accessor must have the same type`
+type BufferLike = Buffer | any
+
 export default class Account {
+  private props: AccountProps
+
   /**
    * The account's nonce.
    */
-  public nonce: Buffer
+  get nonce(): BufferLike {
+    return this.props.nonce
+  }
+
+  set nonce(nonce: BufferLike) {
+    this.props.nonce = toBuffer(nonce)
+  }
 
   /**
    * The account's balance in wei.
    */
-  public balance: Buffer
+  get balance(): BufferLike {
+    return this.props.balance
+  }
+
+  set balance(balance: BufferLike) {
+    this.props.balance = toBuffer(balance)
+  }
 
   /**
    * The stateRoot for the storage of the contract.
    */
-  public stateRoot: Buffer
+  get stateRoot(): BufferLike {
+    return this.props.stateRoot
+  }
+
+  set stateRoot(stateRoot: BufferLike) {
+    stateRoot = toBuffer(stateRoot)
+
+    if (stateRoot.length !== 32) {
+      throw new Error('The field stateRoot must be exactly 32 bytes.')
+    }
+
+    this.props.stateRoot = stateRoot
+  }
 
   /**
    * The hash of the code of the contract.
    */
-  public codeHash: Buffer
+  get codeHash(): Buffer {
+    return this.props.codeHash
+  }
+
+  /**
+   * @deprecated
+   */
+  get raw(): Array<Buffer> {
+    const { nonce, balance, stateRoot, codeHash } = this.props
+    return [nonce, balance, stateRoot, codeHash]
+  }
 
   /**
    * Creates a new account object
@@ -93,16 +143,16 @@ export default class Account {
         throw new Error('wrong number of fields in data')
       }
 
-      data.forEach((d, i) => {
+      data.forEach((value, i) => {
         switch (i) {
           case 0:
-            nonce = toBuffer(d)
+            nonce = toBuffer(value)
           case 1:
-            balance = toBuffer(d)
+            balance = toBuffer(value)
           case 2:
-            stateRoot = toBuffer(d)
+            stateRoot = toBuffer(value)
           case 3:
-            codeHash = toBuffer(d)
+            codeHash = toBuffer(value)
         }
       })
     } else if (typeof data === 'object') {
@@ -122,24 +172,46 @@ export default class Account {
       throw new Error('invalid data')
     }
 
-    this.nonce = toBuffer(nonce || '0x')
-    this.balance = toBuffer(balance || '0x')
-    this.stateRoot = stateRoot ? toBuffer(stateRoot) : KECCAK256_RLP
-    this.codeHash = codeHash ? toBuffer(codeHash) : KECCAK256_NULL
+    this.props = {
+      nonce: toBuffer(nonce || '0x'),
+      balance: toBuffer(balance || '0x'),
+      stateRoot: stateRoot ? toBuffer(stateRoot) : KECCAK256_RLP,
+      codeHash: codeHash ? toBuffer(codeHash) : KECCAK256_NULL,
+    }
 
-    if (this.stateRoot.length !== 32) {
+    // Validate
+    if (this.props.stateRoot.length !== 32) {
       throw new Error('The field stateRoot must be exactly 32 bytes.')
-    } else if (this.codeHash.length !== 32) {
+    } else if (this.props.codeHash.length !== 32) {
       throw new Error('The field codeHash must be exactly 32 bytes.')
     }
   }
 
   /**
    * Returns the RLP serialization of the account as a `Buffer`.
-   *
    */
   serialize(): Buffer {
-    return rlp.encode([this.nonce, this.balance, this.stateRoot, this.codeHash])
+    const { nonce, balance, stateRoot, codeHash } = this.props
+    return rlp.encode([nonce, balance, stateRoot, codeHash])
+  }
+
+  /**
+   * Returns a JSON representation of the object.
+   * @param label If output should be formatted as a labled object.
+   */
+  toJSON(label: boolean = false): String {
+    const { nonce, balance, stateRoot, codeHash } = this.props
+    if (label) {
+      type Dict = { [key: string]: string }
+      const labeled: Dict = {
+        nonce: `0x${nonce.toString('hex')}`,
+        balance: `0x${balance.toString('hex')}`,
+        stateRoot: `0x${stateRoot.toString('hex')}`,
+        codeHash: `0x${codeHash.toString('hex')}`,
+      }
+      return JSON.stringify(labeled)
+    }
+    return baToJSON([nonce, balance, stateRoot, codeHash])
   }
 
   /**
@@ -147,7 +219,8 @@ export default class Account {
    *
    */
   isContract(): boolean {
-    return this.codeHash.toString('hex') !== KECCAK256_NULL_S
+    const { codeHash } = this.props
+    return codeHash.toString('hex') !== KECCAK256_NULL_S
   }
 
   /**
@@ -161,7 +234,7 @@ export default class Account {
       return
     }
 
-    trie.getRaw(this.codeHash, cb)
+    trie.getRaw(this.props.codeHash, cb)
   }
 
   /**
@@ -200,15 +273,16 @@ export default class Account {
    *
    */
   setCode(trie: Trie, code: Buffer, cb: (err: any, codeHash: Buffer) => void): void {
-    this.codeHash = keccak256(code)
+    const codeHash = keccak256(code)
+    this.props.codeHash = codeHash
 
-    if (this.codeHash.toString('hex') === KECCAK256_NULL_S) {
+    if (codeHash.toString('hex') === KECCAK256_NULL_S) {
       cb(null, Buffer.alloc(0))
       return
     }
 
-    trie.putRaw(this.codeHash, code, (err: any) => {
-      cb(err, this.codeHash)
+    trie.putRaw(codeHash, code, (err: any) => {
+      cb(err, codeHash)
     })
   }
 
@@ -220,7 +294,7 @@ export default class Account {
    */
   getStorage(trie: Trie, key: Buffer | string, cb: TrieGetCb) {
     const t = trie.copy()
-    t.root = this.stateRoot
+    t.root = this.props.stateRoot
     t.get(key, cb)
   }
 
@@ -259,10 +333,10 @@ export default class Account {
    */
   setStorage(trie: Trie, key: Buffer | string, val: Buffer | string, cb: () => void) {
     const t = trie.copy()
-    t.root = this.stateRoot
+    t.root = this.props.stateRoot
     t.put(key, val, (err: any) => {
       if (err) return cb()
-      this.stateRoot = t.root
+      this.props.stateRoot = t.root
       cb()
     })
   }
@@ -272,10 +346,11 @@ export default class Account {
    *
    */
   isEmpty(): boolean {
+    const { nonce, balance, codeHash } = this.props
     return (
-      this.balance.toString('hex') === '' &&
-      this.nonce.toString('hex') === '' &&
-      this.codeHash.toString('hex') === KECCAK256_NULL_S
+      balance.toString('hex') === '' &&
+      nonce.toString('hex') === '' &&
+      codeHash.toString('hex') === KECCAK256_NULL_S
     )
   }
 }
