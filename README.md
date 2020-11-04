@@ -1,4 +1,3 @@
-
 This package has been deprecated. Please use `ethereumjs-util` v7.0.6 onwards.
 
 Visit https://github.com/ethereumjs/ethereumjs-util/releases/tag/v7.0.6 for more.
