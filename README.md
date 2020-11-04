@@ -1,9 +1,6 @@
-<p align="center">
-  <a href="https://github.com/ethereumjs/ethereumjs-vm/tree/master/packages/account">
-    <img src="https://user-images.githubusercontent.com/47108/78554503-42c47000-77d9-11ea-8935-2d93981d50df.png" width="309">
-  </a>
-</p>
+This package has been deprecated. Please use `ethereumjs-util` v7.0.6 onwards.
 
+Visit https://github.com/ethereumjs/ethereumjs-util/releases/tag/v7.0.6 for more.
 
 # SYNOPSIS
 
